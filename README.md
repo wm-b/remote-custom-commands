@@ -8,4 +8,4 @@ Run `bash gradlew build` (Windows: `.\gradlew.bat build`). The distributable JAR
 
 Use `/rcc target <server> <command-id> [args...]` on Paper or Fabric to override a definition's destinations and broadcast setting for one invocation. For example: `/rcc target fabric transfer-event-points-fabric-2 Inxc 1`.
 
-See [installation](docs/installation.md), [configuration](docs/configuration.md), and [protocol](docs/protocol.md). The first release uses player-carried plugin messages; a player must be connected to both the origin and destination backend during remote routing. Local execution with no `server` needs no carrier. A timeout can mean the destination executed a command but its reply was lost. Do not automatically retry timed-out commands with side effects.
+See [installation](docs/installation.md), [configuration](docs/configuration.md), and [protocol](docs/protocol.md) for more detail.
