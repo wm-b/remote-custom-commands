@@ -1,0 +1,3 @@
+pluginManagement { repositories { maven { url = 'https://maven.fabricmc.net/' }; gradlePluginPortal() } }
+rootProject.name = 'remote-custom-commands'
+include 'common', 'paper', 'velocity', 'fabric'

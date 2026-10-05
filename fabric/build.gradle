@@ -1,0 +1,21 @@
+plugins { id 'fabric-loom' version '1.10.5' }
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+dependencies {
+    // The unused event API snapshot is no longer available; RCC only uses the economy interfaces.
+    compileOnly('net.impactdev.impactor.api:economy:5.3.5') { exclude group: 'net.kyori', module: 'event-api' }
+    testImplementation('net.impactdev.impactor.api:economy:5.3.5') { exclude group: 'net.kyori', module: 'event-api' }
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    minecraft 'com.mojang:minecraft:1.21.1'
+    mappings 'net.fabricmc:yarn:1.21.1+build.3:v2'
+    modImplementation 'net.fabricmc:fabric-loader:0.16.14'
+    modImplementation 'net.fabricmc.fabric-api:fabric-api:0.116.15+1.21.1'
+    implementation project(':common')
+    include project(':common')
+    compileOnly 'net.luckperms:api:5.4'
+    include 'org.yaml:snakeyaml:2.2'
+    implementation 'org.yaml:snakeyaml:2.2'
+}
+repositories { maven { url = 'https://maven.impactdev.net/repository/development' } }
+tasks.test { useJUnitPlatform() }
+processResources { filesMatching('fabric.mod.json') { expand version: project.version } }
+tasks.remapJar { archiveFileName = "RemoteCustomCommands_Fabric_${project.version.toString().replace('.', '-')}.jar" }

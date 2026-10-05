@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "rcc",
+  "version": "${version}",
+  "name": "Remote Custom Commands",
+  "environment": "server",
+  "entrypoints": { "main": ["inceris.rcc.fabric.RccFabric"] },
+  "depends": { "fabricloader": ">=0.16.14", "minecraft": "1.21.1", "java": ">=21", "fabric-api": "*" },
+  "suggests": { "luckperms": "*", "impactor": ">=5.3.5" }
+}

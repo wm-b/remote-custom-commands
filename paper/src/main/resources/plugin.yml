@@ -1,0 +1,6 @@
+name: RemoteCustomCommands
+softdepend: [Vault]
+version: ${version}
+main: inceris.rcc.paper.RccPaper
+api-version: '1.21'
+description: Remote custom commands backend

@@ -1,0 +1,12 @@
+dependencies {
+    compileOnly('com.github.MilkBowl:VaultAPI:1.7') { transitive = false }
+    testImplementation('com.github.MilkBowl:VaultAPI:1.7') { transitive = false }
+    implementation project(':common')
+    compileOnly 'io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT'
+    testImplementation 'io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+}
+repositories { maven { url = 'https://jitpack.io' } }
+tasks.test { useJUnitPlatform() }
+processResources { filesMatching('plugin.yml') { expand version: project.version } }
+tasks.jar { archiveFileName = "RemoteCustomCommands_Paper_${project.version.toString().replace('.', '-')}.jar"; from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }; duplicatesStrategy = DuplicatesStrategy.EXCLUDE }

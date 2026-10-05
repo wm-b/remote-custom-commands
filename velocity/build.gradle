@@ -1,0 +1,6 @@
+dependencies {
+    implementation project(':common')
+    compileOnly 'com.velocitypowered:velocity-api:3.4.0-SNAPSHOT'
+    annotationProcessor 'com.velocitypowered:velocity-api:3.4.0-SNAPSHOT'
+}
+tasks.jar { archiveFileName = "RemoteCustomCommands_Velocity_${project.version.toString().replace('.', '-')}.jar"; from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }; duplicatesStrategy = DuplicatesStrategy.EXCLUDE }
