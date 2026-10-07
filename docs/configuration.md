@@ -86,7 +86,7 @@ Use `/rcc target <server> <identifier> [args...]` to choose one destination for 
 
 With the default `permission-required: true`, players need the configured `permission-node`, or OP status if no node is supplied. Set `permission-required: false` to skip this check. Console invocations are exempt.
 
-On Fabric, explicit permission nodes require LuckPerms. Without it, those checks deny access; the OP fallback works without LuckPerms.
+On Fabric, RCC uses LuckPerms to check explicit permission nodes. Without it, those checks deny access; RCC's OP fallback works without LuckPerms.
 
 ### Callbacks: `on-success` and `on-error`
 
@@ -108,7 +108,7 @@ Use `$multiargs` to pass the original arguments as space-separated text, or indi
 
 ### Currency actions
 
-Add a `currency` mapping to perform an action on each selected destination. The destination needs the corresponding provider; the originating backend may use either Paper or Fabric. Vault and Impactor are optional integrations and are not bundled into the RCC JARs. Scoreboard actions require no economy provider.
+Add a `currency` mapping to perform an action on each selected destination. The originating backend may use either Paper or Fabric. RCC's Vault and Impactor integrations are optional; scoreboard actions require neither. See [Installation](installation.md) for integration setup.
 
 | Field | Values |
 | --- | --- |
@@ -137,7 +137,7 @@ grant-event-points:
 
 Use `player: "$arg1"` for a separately chosen player, `player: "$player"` for the invoker's name, or omit it to use their UUID. Console invocations must supply a player explicitly. Placeholders are supported in the `currency`, `amount`, and `player` fields.
 
-For scoreboard actions, `currency` names an existing writable objective on the main/server scoreboard. Scores use the player's name, and a missing score starts at zero. Vault exposes one active currency, so its `currency` field may be omitted or set to `default`.
+For scoreboard actions, `currency` names an existing writable objective on the main/server scoreboard. RCC uses the player's name for the score and treats a missing score as zero. For Vault actions, RCC accepts an omitted `currency` or `default`; the field does not select a world or another currency.
 
 ```yaml
 take-points:
@@ -206,19 +206,19 @@ Callback chains stop after four hops. Callback failures are logged independently
 
 ### Currency account identity and numeric limits
 
-Prefer UUIDs for economy accounts across servers and after name changes. Name resolution uses the destination's profile cache and profile lookup, and correct UUID forwarding must be configured across the network.
+RCC resolves currency player names using the destination's profile cache and profile lookup.
 
-Scoreboard names work without the player having joined that backend, including for offline players. UUIDs resolve to a known profile name, the invoker's name when targeting their UUID, or an asynchronous profile lookup. An unknown UUID returns an error instead of creating a separate UUID-named score. Offline-mode UUIDs cannot be reverse-looked-up through Mojang; use a known name for scoreboard actions in that case.
+For scoreboard actions, RCC accepts names even if the player is offline or has not joined that backend. RCC resolves UUIDs to a known profile name, the invoker's name when targeting their UUID, or an asynchronous profile lookup. An unknown UUID returns an error instead of creating a separate UUID-named score.
 
 Scoreboard amounts and resulting scores must fit a signed 32-bit integer. Removing more than the existing balance fails without changing it.
 
-### Vault and Impactor provider behavior
+### Currency action results
 
-Vault requires Vault and an economy provider supporting offline accounts on the Paper destination. RCC uses the provider's `OfflinePlayer` API and creates an account when necessary. The `currency` field does not select a world or another currency. `set` adjusts the balance with a deposit or withdrawal. Amounts exceeding the provider's decimal precision or Vault's numeric precision fail. See the [Vault economy API](https://github.com/MilkBowl/VaultAPI/blob/master/src/main/java/net/milkbowl/vault/economy/Economy.java).
+For Vault actions, RCC creates an account when necessary and implements `set` by depositing or withdrawing the difference from the current balance. RCC rejects amounts exceeding the provider's decimal precision or Vault's numeric precision.
 
-Impactor requires Impactor 5.3.5 for Minecraft 1.21.1 on the Fabric destination. RCC fetches or creates an account by UUID and the selected currency, waits for asynchronous account loading, applies the transaction on the server thread, and waits for persistence before reporting success. Missing currencies and rejected transactions return failures. See the [Impactor economy API](https://github.com/NickImpact/ImpactorAPI/blob/dbcce5b/economy/src/main/java/net/impactdev/impactor/api/economy/EconomyService.java).
+For Impactor actions, RCC fetches or creates an account by UUID and the selected currency, then waits for persistence before reporting success. Missing currencies and rejected transactions return failures.
 
-Use explicit callback definitions to implement refunds when appropriate. A timeout or storage failure can be inconclusive about whether a balance changed.
+An RCC timeout or storage failure can be inconclusive about whether a balance changed.
 
 ### Remote transport requirements
 
