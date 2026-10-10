@@ -2,15 +2,20 @@ package inceris.rcc.common;
 import java.io.*;
 import java.util.*;
 
-public sealed interface Packet permits Packet.Request, Packet.Response, Packet.Discover, Packet.Servers {
+public sealed interface Packet permits Packet.Request, Packet.Response, Packet.Discover, Packet.Servers, Packet.Check {
     int MAX_BYTES = 30000;
+    int VERSION = 4;
     String CHANNEL = "rcc:bridge";
-    record Request(UUID id, String origin, String target, List<String> commands, CurrencyAction.Operation currency) implements Packet {
+    record Request(UUID id, String origin, String target, List<String> commands, CurrencyAction.Operation currency, UUID playerUuid) implements Packet {
+        public Request(UUID id, String origin, String target, List<String> commands, CurrencyAction.Operation currency) {
+            this(id, origin, target, commands, currency, null);
+        }
         public Request(UUID id, String origin, String target, List<String> commands) { this(id, origin, target, commands, null); }
         public Request { commands = List.copyOf(commands); }
     }
     record Response(UUID id, String origin, String target, Code code, String detail) implements Packet {}
     record Discover(UUID id, String origin) implements Packet {}
+    record Check(UUID id, String origin, String target) implements Packet {}
     record Servers(UUID id, String origin, List<String> names) implements Packet {
         public Servers { names = List.copyOf(names); }
     }
@@ -19,7 +24,7 @@ public sealed interface Packet permits Packet.Request, Packet.Response, Packet.D
         try {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             DataOutputStream out = new DataOutputStream(bytes);
-            out.writeByte(3);
+            out.writeByte(VERSION);
             if (packet instanceof Request request) {
                 out.writeByte(1); id(out, request.id()); out.writeUTF(request.origin()); out.writeUTF(request.target());
                 out.writeShort(request.commands().size());
@@ -30,6 +35,8 @@ public sealed interface Packet permits Packet.Request, Packet.Response, Packet.D
                     out.writeUTF(c.type().name()); out.writeUTF(c.action().name()); out.writeUTF(c.currency());
                     out.writeUTF(c.amount().toString()); out.writeUTF(c.player()); out.writeUTF(c.nameHint());
                 }
+                out.writeBoolean(request.playerUuid() != null);
+                if (request.playerUuid() != null) id(out, request.playerUuid());
             } else if (packet instanceof Response response) {
                 out.writeByte(2); id(out, response.id()); out.writeUTF(response.origin()); out.writeUTF(response.target());
                 out.writeByte(response.code().ordinal()); out.writeUTF(response.detail());
@@ -40,6 +47,8 @@ public sealed interface Packet permits Packet.Request, Packet.Response, Packet.D
                 out.writeByte(4); id(out, servers.id()); out.writeUTF(servers.origin());
                 out.writeShort(servers.names().size());
                 for (String name : servers.names()) out.writeUTF(name);
+            } else if (packet instanceof Check check) {
+                out.writeByte(5); id(out, check.id()); out.writeUTF(check.origin()); out.writeUTF(check.target());
             }
             out.flush();
             if (bytes.size() > MAX_BYTES) throw new IllegalArgumentException("message too large");
@@ -50,13 +59,13 @@ public sealed interface Packet permits Packet.Request, Packet.Response, Packet.D
         if (bytes.length > MAX_BYTES || bytes.length < 19) throw new IllegalArgumentException("invalid message size");
         try {
             DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes));
-            if (in.readUnsignedByte() != 3) throw new IllegalArgumentException("unsupported protocol");
+            if (in.readUnsignedByte() != VERSION) throw new IllegalArgumentException("unsupported protocol");
             int type = in.readUnsignedByte();
             UUID id = new UUID(in.readLong(), in.readLong());
             String origin = in.readUTF();
             if (!origin.matches("[a-zA-Z0-9_-]+")) throw new IllegalArgumentException("invalid origin name");
-            String target = type == 1 || type == 2 ? in.readUTF() : "";
-            if ((type == 1 || type == 2) && !target.matches("[a-zA-Z0-9_-]+")) throw new IllegalArgumentException("invalid server name");
+            String target = type == 1 || type == 2 || type == 5 ? in.readUTF() : "";
+            if ((type == 1 || type == 2 || type == 5) && !target.matches("[a-zA-Z0-9_-]+")) throw new IllegalArgumentException("invalid server name");
             Packet result;
             if (type == 1) {
                 int count = in.readUnsignedShort();
@@ -70,7 +79,8 @@ public sealed interface Packet permits Packet.Request, Packet.Response, Packet.D
                 CurrencyAction.Operation currency = null;
                 if (in.readBoolean()) currency = new CurrencyAction.Operation(CurrencyAction.Type.valueOf(in.readUTF()), CurrencyAction.Action.valueOf(in.readUTF()), in.readUTF(), new java.math.BigDecimal(in.readUTF()), in.readUTF(), in.readUTF());
                 if (count == 0 && currency == null) throw new IllegalArgumentException("empty request");
-                result = new Request(id, origin, target, commands, currency);
+                UUID playerUuid = in.readBoolean() ? new UUID(in.readLong(), in.readLong()) : null;
+                result = new Request(id, origin, target, commands, currency, playerUuid);
             } else if (type == 2) {
                 int code = in.readUnsignedByte();
                 if (code >= Code.values().length) throw new IllegalArgumentException("invalid response code");
@@ -86,7 +96,8 @@ public sealed interface Packet permits Packet.Request, Packet.Response, Packet.D
                     names.add(name);
                 }
                 result = new Servers(id, origin, names);
-            } else throw new IllegalArgumentException("invalid message type");
+            } else if (type == 5) result = new Check(id, origin, target);
+            else throw new IllegalArgumentException("invalid message type");
             if (in.available() != 0) throw new IllegalArgumentException("trailing data");
             return result;
         } catch (IOException e) { throw new IllegalArgumentException("malformed message", e); }

@@ -78,8 +78,16 @@ public final class RccFabric implements ModInitializer {
                 server.getPlayerManager().getPlayerList().getFirst().networkHandler.sendPacket(new CustomPayloadS2CPacket(new RccPayload(bytes))); return true;
             }
             public boolean dispatchConsole(String command) {
+                return dispatch(command, server.getCommandSource());
+            }
+            public boolean isPlayerAvailable(UUID uuid) { return server.getPlayerManager().getPlayer(uuid) != null; }
+            public boolean dispatchPlayer(UUID uuid, String command) {
+                ServerPlayerEntity player = server.getPlayerManager().getPlayer(uuid);
+                return player != null && dispatch(command, player.getCommandSource());
+            }
+            private boolean dispatch(String command, ServerCommandSource source) {
                 String actual = command.startsWith("/") ? command.substring(1) : command;
-                try { return server.getCommandManager().getDispatcher().execute(actual, server.getCommandSource()) > 0; }
+                try { return server.getCommandManager().getDispatcher().execute(actual, source) > 0; }
                 catch (CommandSyntaxException e) { LOG.warn("RCC command failed: {}", e.getMessage()); return false; }
             }
             public void feedback(String uuid, String message) {

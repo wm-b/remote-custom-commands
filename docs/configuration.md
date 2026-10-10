@@ -31,10 +31,13 @@ These fields belong inside each command definition, beneath its identifier.
 | Field | Values and behavior | Default when omitted |
 | --- | --- | --- |
 | `command` | Slash-prefixed command binding, used when `register` is `true` | `/<identifier>` |
-| `server` | Nonempty list of Velocity backend names or placeholder templates; duplicates are attempted once | Execute on the current backend |
+| `server` | One Velocity backend name or a list of names/templates; duplicates are attempted once | Execute on the current backend |
 | `broadcast` | Boolean; `true` attempts every backend configured in Velocity and ignores `server` | `false` |
-| `runcmd` | Nonempty list of commands, run in order as each destination's console; a leading `/` is optional | Required unless `currency` is supplied; then it may be omitted or empty |
+| `runcmd` | Nonempty list of commands, run in order on each destination as console or player according to `run-as-player`; a leading `/` is optional | Required unless `currency` is supplied; then it may be omitted or empty |
+| `run-as-player` | Boolean; `true` executes `runcmd` as the invoking player on each destination, with their normal permissions | `false` (console execution) |
 | `currency` | Mapping describing a currency action, performed before `runcmd`; see [Currency actions](#currency-actions) | No currency action |
+| `check-server-available` | One Velocity backend name or a list of names/templates; all must reply successfully to a plugin message before currency or `runcmd` execution | No availability checks |
+| `on-server-unavailable` | List of callbacks run on the origin's console for each failed availability check; skips currency, `runcmd`, and `on-error` | Empty list |
 | `register` | Boolean; `true` registers the `command` binding. `/rcc execute` works regardless | `false` |
 | `permission-required` | Boolean; `true` checks the invoking player's permission node or OP status | `true` |
 | `permission-node` | Permission required when player permission checks are enabled | Require OP status |
@@ -82,15 +85,64 @@ announce:
 
 Use `/rcc target <server> <identifier> [args...]` to choose one destination for an invocation. For example, `/rcc target fabric welcome Bob` runs `welcome` on `fabric`. This overrides both `server` and `broadcast`, works with `register: false`, and applies the normal player permission checks. `$target-server` resolves to the chosen destination in commands, currency fields, and callbacks.
 
+### Command sender: `run-as-player`
+
+Set `run-as-player: true` to execute `runcmd` as the player who invoked the definition, using their normal permissions on the destination. RCC identifies that player by UUID, independently of any player carrying the plugin message. Omit `server` to execute on their current backend:
+
+```yaml
+player-spawn:
+  run-as-player: true
+  permission-required: false
+  runcmd:
+    - spawn
+  on-error:
+    - "say Could not run spawn for $player on $attempted-server"
+```
+
+The invoking player must be online on each execution destination. Other connected players cannot substitute for them. If the player is absent, that destination returns command failure and runs `on-error` without executing commands or applying currency. A console invocation with a nonempty `runcmd` returns `INVALID_REQUEST` and runs `on-error`. There is no console fallback or permission elevation. A player may receive the executed command's normal output; RCC result diagnostics remain console-only.
+
+This option affects only `runcmd`. Currency actions keep their configured player and behavior; definitions containing only currency ignore `run-as-player`. All callbacks execute on the origin console, and an internal `rcc:` callback retains the original player's identity while using the next definition's own `run-as-player` setting. Currency still precedes commands; a later player disconnect or command failure does not undo an applied currency action. Availability checks keep their existing behavior and require only a backend reply, so they do not verify that the invoking player is on that backend.
+
+Update Velocity, Paper, and Fabric together when deploying support for `run-as-player`; it uses protocol version `4`.
+
+### Availability: `check-server-available` and `on-server-unavailable`
+
+Use `check-server-available` to verify one backend or a list of backends before executing a definition. Every unique backend must respond successfully through the RCC plugin message bridge before any destination's currency action or `runcmd` begins. The checks send no commands and change no currency. Names may use the same placeholders as `server`; duplicates are checked once after substitution.
+
+```yaml
+transfer:
+  check-server-available: [paper, fabric]
+  currency:
+    type: scoreboard
+    action: remove
+    currency: event_points
+    amount: "$arg2"
+    player: "$arg1"
+  runcmd:
+    - "say Transfer started for $arg1"
+  on-server-unavailable:
+    - "say Transfer cancelled: $attempted-server is unavailable"
+```
+
+For one backend, `check-server-available: fabric` is also accepted. Omit the field or use `[]` to disable checks. The list is independent of the execution destinations: it still applies when `server` is omitted, `broadcast: true` is set, or `/rcc target` overrides the execution destination. Permission checks happen first; broadcast discovery happens only after all availability checks succeed.
+
+If any backend cannot be verified, the definition runs only `on-server-unavailable` for that check. It does not execute its currency action, `runcmd`, `on-success`, or `on-error`. Other checks still complete, and each failed check runs its own callback list once. This includes unknown backends, missing player carriers, invalid resolved names, unsuccessful replies, and no reply within ten seconds. Successful checks do not run callbacks; later execution results use the normal success/error callbacks.
+
+Checks require RCC on the checked backend and a connected player on both the origin and the checked backend, even when checking the origin itself. Update the Velocity bridge and checked backends to a version supporting availability checks. A successful check confirms availability when the reply was sent; subsequent execution can still fail and trigger `on-error`.
+
 ### Permissions: `permission-required` and `permission-node`
 
 With the default `permission-required: true`, players need the configured `permission-node`, or OP status if no node is supplied. Set `permission-required: false` to skip this check. Console invocations are exempt.
 
 On Fabric, RCC uses LuckPerms to check explicit permission nodes. Without it, those checks deny access; RCC's OP fallback works without LuckPerms.
 
-### Callbacks: `on-success` and `on-error`
+### Callbacks: `on-success`, `on-error`, and `on-server-unavailable`
 
 Callbacks run **on the originating backend's console**, in their configured order. Each destination has its own result: its entire `on-success` list runs if its currency action and all commands succeed; otherwise its entire `on-error` list runs. A mixed outcome therefore runs success callbacks for successful destinations and error callbacks for failed ones. Results may arrive in a different order from the server list.
+
+Callbacks run once per request result, rather than once per command in `runcmd` or per raw plugin message. Duplicate replies are ignored. Availability checks use only `on-server-unavailable` on failure. `$attempted-server` identifies the execution destination in success/error callbacks and the checked backend in unavailable callbacks; `$target-server` has the same value there. Local execution also produces one result and uses the origin's name.
+
+RCC request diagnostics (request ID, attempted backend, result code, and details) are logged only to the server console. Players still receive command validation and permission errors. Configured callback commands can provide any desired player-facing messages.
 
 Each entry uses its first whitespace-separated token as the command and the remaining text as explicit arguments. Placeholders resolve using the triggering invocation. No arguments are automatically forwarded or appended. Normal commands use the originating platform's console dispatcher, preserving their argument text and quotes.
 
@@ -163,7 +215,7 @@ When both `currency` and `runcmd` are supplied, the currency action runs first. 
 
 ## Placeholders
 
-Placeholders resolve using the invocation's arguments and player context. They are available in `runcmd`, callbacks, the currency fields listed above, and `server` entries, with the destination exception below.
+Placeholders resolve using the invocation's arguments and player context. They are available in `runcmd`, callbacks, the currency fields listed above, and `server`/`check-server-available` entries, with the exceptions below.
 
 | Placeholder | Resolves to |
 | --- | --- |
@@ -172,7 +224,8 @@ Placeholders resolve using the invocation's arguments and player context. They a
 | `$arg1`, `$arg2`, … | Positional argument, numbered from 1 |
 | `$multiargs` | All invocation arguments joined with spaces |
 | `$server` | Originating backend's name |
-| `$target-server` | Individual destination's name; unavailable in `server` because the destination has not yet been selected |
+| `$target-server` | Individual destination's name, or checked backend in unavailable callbacks; unavailable in `server` and `check-server-available` templates |
+| `$attempted-server` | Callback-only placeholder: attempted destination in `on-success`/`on-error`, checked backend in `on-server-unavailable` |
 
 Missing arguments and player placeholders in console invocations become empty strings. Substitution is literal: inserted values are not expanded again. Quote invocation arguments containing spaces; a backslash escapes the next character.
 
@@ -188,7 +241,7 @@ On startup, malformed files are logged and skipped while valid files load. `/rcc
 
 Only `.yml` files directly inside `commands/` are scanned; subdirectories and other extensions are ignored. Identifiers contain only letters, digits, underscores, or hyphens and must be unique across files. Registered bindings must also be unique, ignoring case, and cannot use the reserved name `rcc`.
 
-For compatibility, a single string is accepted for `server`, `on-success`, or `on-error`; the list form is recommended. An explicitly empty `server: []` is invalid unless `broadcast: true` ignores it.
+For compatibility, a single string is accepted for `server`, `on-success`, `on-error`, or `on-server-unavailable`; the list form is recommended. `check-server-available` accepts either one string or a list. An explicitly empty `server: []` is invalid unless `broadcast: true` ignores it.
 
 ### Server template validation and completion
 
@@ -202,7 +255,7 @@ Command identifier completion is available. Server completion suggests only fixe
 
 Internal `rcc:` argument text is parsed with support for double quotes and backslash escapes. `rcc:<identifier>` alone passes no arguments. An unquoted `$multiargs` value is parsed again and does not preserve the original quote grouping. To forward known arguments while preserving spaces, use `rcc:next "$arg1" "$arg2"`.
 
-Callback chains stop after four hops. Callback failures are logged independently, do not trigger another callback for the same request, and do not prevent later list entries from being attempted. If broadcast discovery itself fails, `on-error` runs once with `$target-server` set to `broadcast`.
+Callback chains stop after four hops. Callback failures are logged independently, do not trigger another callback for the same request, and do not prevent later list entries from being attempted. If broadcast discovery itself fails, `on-error` runs once with `$target-server` and `$attempted-server` set to `broadcast` because no individual backend was selected.
 
 ### Currency account identity and numeric limits
 
@@ -222,6 +275,6 @@ An RCC timeout or storage failure can be inconclusive about whether a balance ch
 
 ### Remote transport requirements
 
-The affected player can be offline, but remote plugin message routing still requires a connected player on the origin and each destination to carry messages. Local execution with no `server` requires no carrier unless broadcast or a target override is used.
+The affected player can be offline, but remote plugin message routing still requires a connected player on the origin and each destination to carry messages. Local execution with no `server` requires no carrier unless availability checks, broadcast, or a target override are used.
 
 Broadcast destinations without a player carrier fail explicitly; destinations without RCC may time out. See [Installation](installation.md) for network setup requirements.

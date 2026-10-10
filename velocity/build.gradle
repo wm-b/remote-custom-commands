@@ -2,5 +2,9 @@ dependencies {
     implementation project(':common')
     compileOnly 'com.velocitypowered:velocity-api:3.4.0-SNAPSHOT'
     annotationProcessor 'com.velocitypowered:velocity-api:3.4.0-SNAPSHOT'
+    testImplementation 'com.velocitypowered:velocity-api:3.4.0-SNAPSHOT'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
 }
+
+tasks.test { useJUnitPlatform() }
 tasks.jar { archiveFileName = "RemoteCustomCommands_Velocity_${project.version.toString().replace('.', '-')}.jar"; from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }; duplicatesStrategy = DuplicatesStrategy.EXCLUDE }

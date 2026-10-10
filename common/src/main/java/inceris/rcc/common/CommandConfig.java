@@ -51,6 +51,9 @@ public final class CommandConfig {
             if (!broadcast && values.get("server") != null && servers.isEmpty()) throw new IllegalArgumentException("empty server list for " + id);
             if (servers.stream().anyMatch(s -> !Placeholders.isServerTemplate(s))) throw new IllegalArgumentException("invalid server template for " + id);
             servers = List.copyOf(new LinkedHashSet<>(servers));
+            List<String> checks = strings(values, "check-server-available");
+            if (checks.stream().anyMatch(s -> !Placeholders.isServerTemplate(s))) throw new IllegalArgumentException("invalid check-server-available template for " + id);
+            checks = List.copyOf(new LinkedHashSet<>(checks));
             CurrencyAction currency = currency(values.get("currency"));
             Object raw = values.get("runcmd");
             if (raw == null && currency != null) raw = List.of();
@@ -62,7 +65,8 @@ public final class CommandConfig {
             String node = optional(values, "permission-node");
             if (node != null && !node.matches("[a-zA-Z0-9_.-]+")) throw new IllegalArgumentException("invalid permission-node for " + id);
             List<String> success = strings(values, "on-success"), error = strings(values, "on-error");
-            result.put(id, new CommandDefinition(id, command, servers, broadcast, commands, register, permissionRequired, node, success, error, currency));
+            result.put(id, new CommandDefinition(id, command, servers, broadcast, commands, register, permissionRequired, node,
+                success, error, currency, checks, strings(values, "on-server-unavailable"), bool(values, "run-as-player", false)));
         }
         return result;
     }

@@ -23,6 +23,11 @@ public final class RccPaper extends JavaPlugin implements PluginMessageListener 
                 return true;
             }
             public boolean dispatchConsole(String command) { return Bukkit.dispatchCommand(Bukkit.getConsoleSender(), strip(command)); }
+            public boolean isPlayerAvailable(UUID uuid) { return Bukkit.getPlayer(uuid) != null; }
+            public boolean dispatchPlayer(UUID uuid, String command) {
+                Player player = Bukkit.getPlayer(uuid);
+                return player != null && player.performCommand(strip(command));
+            }
             public void feedback(String uuid, String message) {
                 getLogger().info(message);
                 if (uuid != null) {

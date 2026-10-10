@@ -44,10 +44,9 @@ public final class RccVelocity {
                 send(sender, Packet.encode(new Packet.Servers(discover.id(), sender, List.of())));
             }
         } else if (packet instanceof Packet.Request request) {
-            if (!request.origin().equals(sender) || request.commands().size() > 100) return;
-            if (routes.putIfAbsent(request.id(), new Route(sender, request.target(), System.currentTimeMillis() + 10_000)) != null) return;
-            if (proxy.getServer(request.target()).isEmpty()) { fail(request, Packet.Code.ROUTING_FAILURE, "Unknown backend"); return; }
-            if (!send(request.target(), event.getData())) fail(request, Packet.Code.ROUTING_FAILURE, "No player on destination backend");
+            route(request.id(), request.origin(), request.target(), connection, event.getData());
+        } else if (packet instanceof Packet.Check check) {
+            route(check.id(), check.origin(), check.target(), connection, event.getData());
         } else if (packet instanceof Packet.Response response) {
             Route route = routes.get(response.id());
             if (route == null || !route.target().equals(sender) || !route.origin().equals(response.origin()) || !route.target().equals(response.target())) return;
@@ -55,17 +54,26 @@ public final class RccVelocity {
             send(route.origin(), event.getData());
         }
     }
+    private void route(UUID id, String origin, String target, ServerConnection connection, byte[] payload) {
+        String sender = connection.getServer().getServerInfo().getName();
+        if (!origin.equals(sender)) return;
+        if (routes.putIfAbsent(id, new Route(sender, target, System.currentTimeMillis() + 10_000)) != null) return;
+        if (proxy.getServer(target).isEmpty()) { fail(id, origin, target, connection, Packet.Code.ROUTING_FAILURE, "Unknown backend"); return; }
+        if (!send(target, payload)) fail(id, origin, target, connection, Packet.Code.ROUTING_FAILURE, "No player on destination backend");
+    }
     private boolean send(String server, byte[] payload) {
         for (Player player : proxy.getAllPlayers()) {
-            if (player.getCurrentServer().map(c -> c.getServer().getServerInfo().getName().equals(server)).orElse(false)) {
-                if (player.getCurrentServer().orElseThrow().sendPluginMessage(CHANNEL, payload)) return true;
-            }
+            ServerConnection connection = player.getCurrentServer().orElse(null);
+            if (connection != null && connection.getServer().getServerInfo().getName().equals(server)
+                && connection.sendPluginMessage(CHANNEL, payload)) return true;
         }
         return false;
     }
-    private void fail(Packet.Request request, Packet.Code code, String detail) {
-        routes.remove(request.id());
-        send(request.origin(), Packet.encode(new Packet.Response(request.id(), request.origin(), request.target(), code, detail)));
+    private void fail(UUID id, String origin, String target, ServerConnection connection, Packet.Code code, String detail) {
+        routes.remove(id);
+        byte[] response = Packet.encode(new Packet.Response(id, origin, target, code, detail));
+        // The incoming connection is a known carrier, including while global player state is changing.
+        if (!connection.sendPluginMessage(CHANNEL, response)) send(origin, response);
     }
     private void expire() {
         long now = System.currentTimeMillis();
